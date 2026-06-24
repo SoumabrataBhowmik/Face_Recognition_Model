@@ -102,3 +102,59 @@ Run the Implementation:
 Open the provided Jupyter Notebook (face_recognition.ipynb file) to view the data loading, training loop, and evaluation logic.
 
 The trained weights are saved in face_recognition_model.pt. To run inference, load this state dictionary into a ResNet-50 model.
+
+
+## System Architecture
+
+The face recognition system is divided into two primary phases: a model training pipeline utilizing a fine-tuned ResNet-50, and an inference pipeline that extracts L2-normalized 2048-dimensional feature embeddings for cosine similarity matching.
+
+```mermaid
+flowchart TD
+    %% Styling Definitions
+    classDef inputData fill:#e0e0e0,stroke:#999,stroke-width:2px,color:#333;
+    classDef transform fill:#b3e5fc,stroke:#0288d1,stroke-width:2px,color:#000;
+    classDef nnModel fill:#ffcdd2,stroke:#c62828,stroke-width:2px,color:#000;
+    classDef embed fill:#fff9c4,stroke:#fbc02d,stroke-width:2px,color:#000;
+    classDef prediction fill:#ffe0b2,stroke:#ef6c00,stroke-width:2px,color:#000;
+
+    subgraph Training ["Model Training Pipeline"]
+        direction TB
+        TrainInput["Input Data (Train Images)<br>person_00X/<br>img1.png, img2.png<br>distortion/<br>distorted_img.png"]:::inputData
+        
+        TrainPrep["Data Preprocessing (Train)<br>Resize (224x224)<br>RandomHorizontalFlip<br>RandomRotation (10°)<br>ToTensor<br>Normalize"]:::transform
+        
+        TrainPipeline["Model Training Pipeline<br>ResNet-50 (pretrained)<br>Freeze all but layer4 and fc<br>Modify fc Num Classes<br>Loss: CrossEntropyLoss (Label Smoothing 0.1)<br>Optimizer: AdamW<br>Scheduler: StepLR"]:::transform
+        
+        SaveModel["Output<br>Model Weights:<br>Save the Model as<br>face_recognition_model.pt"]:::nnModel
+        
+        TrainInput --> TrainPrep --> TrainPipeline --> SaveModel
+    end
+
+    subgraph Inference ["Validation & Matching Pipeline"]
+        direction TB
+        ValInput["Input Data (Val Images)<br>Clean & Distorted Data"]:::inputData
+        
+        ValPrep["Data Preprocessing (Val)<br>Resize (224x224)<br>ToTensor<br>Normalize"]:::transform
+        
+        LoadModel["Trained ResNet-50 Model<br>(Loaded Weights)"]:::nnModel
+        
+        FeatureExtractor["FaceEmbeddingExtractor<br>(Feature Extractor)<br>ResNet50 up to avgpool<br>(Drop final FC layer)<br>Output: 2048-dim vector<br>Normalize with L2 norm"]:::nnModel
+        
+        CleanEmb["Clean Embeddings<br>Reference Embeddings<br>(for each person)"]:::embed
+        DistEmb["Distorted Embeddings<br>Query Embedding<br>(from distorted image)"]:::embed
+        
+        Match["Cosine Similarity Matching<br>Compare query embedding to all<br>reference embeddings<br>Pick Highest Similarity"]:::nnModel
+        
+        OutputPred["Prediction: Most Similar Person<br>Evaluate Accuracy, Precision, Recall, F1"]:::prediction
+        
+        ValInput --> ValPrep --> LoadModel --> FeatureExtractor
+        FeatureExtractor --> CleanEmb
+        FeatureExtractor --> DistEmb
+        
+        CleanEmb <==> Match
+        DistEmb --> Match
+        Match --> OutputPred
+    end
+
+    %% Connection between training and inference
+    SaveModel -.-> |"Load State Dict"| LoadModel
