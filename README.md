@@ -110,51 +110,70 @@ The face recognition system is divided into two primary phases: a model training
 
 ```mermaid
 flowchart TD
-    %% Styling Definitions
-    classDef inputData fill:#e0e0e0,stroke:#999,stroke-width:2px,color:#333;
-    classDef transform fill:#b3e5fc,stroke:#0288d1,stroke-width:2px,color:#000;
-    classDef nnModel fill:#ffcdd2,stroke:#c62828,stroke-width:2px,color:#000;
-    classDef embed fill:#fff9c4,stroke:#fbc02d,stroke-width:2px,color:#000;
-    classDef prediction fill:#ffe0b2,stroke:#ef6c00,stroke-width:2px,color:#000;
+    %% Node Class Definitions for Aesthetics
+    classDef inputNode fill:#e3f2fd,stroke:#1976d2,stroke-width:2px,color:#0d47a1,rx:8px,ry:8px
+    classDef processNode fill:#e8f5e9,stroke:#388e3c,stroke-width:2px,color:#1b5e20,rx:8px,ry:8px
+    classDef modelNode fill:#ffebee,stroke:#d32f2f,stroke-width:2px,color:#b71c1c,rx:8px,ry:8px
+    classDef embedNode fill:#fff8e1,stroke:#fbc02d,stroke-width:2px,color:#f57f17
+    classDef matchNode fill:#f3e5f5,stroke:#7b1fa2,stroke-width:2px,color:#4a148c
+    classDef outputNode fill:#e0f7fa,stroke:#0097a7,stroke-width:2px,color:#006064,rx:8px,ry:8px
+    
+    %% Global Edge styling
+    linkStyle default stroke:#78909c,stroke-width:2px
 
-    subgraph Training ["Model Training Pipeline"]
+    subgraph TrainingPipeline ["⚙️ Model Training Pipeline"]
         direction TB
-        TrainInput["Input Data (Train Images)<br>person_00X/<br>img1.png, img2.png<br>distortion/<br>distorted_img.png"]:::inputData
         
-        TrainPrep["Data Preprocessing (Train)<br>Resize (224x224)<br>RandomHorizontalFlip<br>RandomRotation (10°)<br>ToTensor<br>Normalize"]:::transform
+        %% Inputs
+        TrainData[/"📁 Input Data (Train Images)<br/><b>person_00X/</b><br/>├── img1.png, img2.png<br/>└── <b>distortion/</b><br/>&nbsp;&nbsp;&nbsp;&nbsp;└── distorted_img.png"/]:::inputNode
+            
+        %% Processing
+        TrainPrep("🔄 Train Preprocessing<br/>• Resize (224x224)<br/>• RandomHorizontalFlip<br/>• RandomRotation (10°)<br/>• ToTensor<br/>• Normalize"):::processNode
         
-        TrainPipeline["Model Training Pipeline<br>ResNet-50 (pretrained)<br>Freeze all but layer4 and fc<br>Modify fc Num Classes<br>Loss: CrossEntropyLoss (Label Smoothing 0.1)<br>Optimizer: AdamW<br>Scheduler: StepLR"]:::transform
+        %% Model
+        TrainModel{{"🧠 Model Training (ResNet-50)<br/>• Pretrained base<br/>• Freeze all except layer4 & fc<br/>• Modify fc Num Classes<br/>• Loss: CrossEntropy (Label Smoothing 0.1)<br/>• Optimizer: AdamW<br/>• Scheduler: StepLR"}}:::modelNode
         
-        SaveModel["Output<br>Model Weights:<br>Save the Model as<br>face_recognition_model.pt"]:::nnModel
+        %% Output file
+        ModelWeights[("💾 Output Weights<br/>face_recognition_model.pt")]:::modelNode
         
-        TrainInput --> TrainPrep --> TrainPipeline --> SaveModel
+        %% Flow
+        TrainData ==> TrainPrep ==> TrainModel ==> ModelWeights
     end
 
-    subgraph Inference ["Validation & Matching Pipeline"]
+    subgraph InferencePipeline ["🔍 Validation & Matching Pipeline"]
         direction TB
-        ValInput["Input Data (Val Images)<br>Clean & Distorted Data"]:::inputData
         
-        ValPrep["Data Preprocessing (Val)<br>Resize (224x224)<br>ToTensor<br>Normalize"]:::transform
+        %% Inputs
+        ValData[/"📁 Input Data (Val Images)<br/>Clean & Distorted Data"/]:::inputNode
         
-        LoadModel["Trained ResNet-50 Model<br>(Loaded Weights)"]:::nnModel
+        %% Processing
+        ValPrep("🔄 Val Preprocessing<br/>• Resize (224x224)<br/>• ToTensor<br/>• Normalize"):::processNode
         
-        FeatureExtractor["FaceEmbeddingExtractor<br>(Feature Extractor)<br>ResNet50 up to avgpool<br>(Drop final FC layer)<br>Output: 2048-dim vector<br>Normalize with L2 norm"]:::nnModel
+        %% Model Loading
+        LoadModel("📥 Loaded ResNet-50<br/>(Pre-trained Weights)"):::modelNode
         
-        CleanEmb["Clean Embeddings<br>Reference Embeddings<br>(for each person)"]:::embed
-        DistEmb["Distorted Embeddings<br>Query Embedding<br>(from distorted image)"]:::embed
+        %% Extractor
+        Extractor{{"🛠️ FaceEmbeddingExtractor<br/>• ResNet50 up to avgpool<br/>• (Drop final FC layer)<br/>• Output: 2048-dim vector<br/>• Normalize with L2 norm"}}:::modelNode
         
-        Match["Cosine Similarity Matching<br>Compare query embedding to all<br>reference embeddings<br>Pick Highest Similarity"]:::nnModel
+        %% Embeddings
+        CleanEmb[/"✨ Clean Embeddings<br/>(Reference / Person)"/]:::embedNode
+        DistEmb[/"🌀 Distorted Embeddings<br/>(Query)"/]:::embedNode
         
-        OutputPred["Prediction: Most Similar Person<br>Evaluate Accuracy, Precision, Recall, F1"]:::prediction
+        %% Matching
+        Match{"⚖️ Cosine Similarity<br/>Compare query to all references<br/>Pick Highest Similarity"}:::matchNode
         
-        ValInput --> ValPrep --> LoadModel --> FeatureExtractor
-        FeatureExtractor --> CleanEmb
-        FeatureExtractor --> DistEmb
+        %% Final Evaluation
+        Metrics("🎯 Final Prediction<br/>Most Similar Person<br/>(Evaluate: Acc, Prec, Rec, F1)"):::outputNode
         
-        CleanEmb <==> Match
-        DistEmb --> Match
-        Match --> OutputPred
+        %% Flow
+        ValData ==> ValPrep ==> LoadModel ==> Extractor
+        Extractor -->|Extract| CleanEmb
+        Extractor -->|Extract| DistEmb
+        
+        CleanEmb <==>|Compare| Match
+        DistEmb ==>|Query| Match
+        Match ==> Metrics
     end
 
-    %% Connection between training and inference
-    SaveModel -.-> |"Load State Dict"| LoadModel
+    %% State Dict Transfer
+    ModelWeights -.->|"torch.load()"| LoadModel
