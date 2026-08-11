@@ -18,7 +18,7 @@ This project implements a two-phase, embedding-based face verification system de
 The system operates in two phases: **Phase 1 (Closed-Set Classification)** and **Phase 2 (Open-Set Embedding Verification)**.
 
 <p align="center">
-  <img src="architecture_diagram_face_recognition.png" width="600" title="Face_Recognition_Model Architecture">
+  <img src="architecture diagram face recognition.png" width="600" title="Face_Recognition_Model Architecture">
 </p>
 
 ### Technical Specifications
