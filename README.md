@@ -1,65 +1,69 @@
-### **Robust Face Recognition via ResNet-50 Feature Extraction**
+# Robust Open-Set Face Recognition Under Severe Visual Distortions
+## Facial Verification via ResNet-50 Proxy-Task Training
 
-## **Facial Verification Under Distortion**
+This project implements a two-phase, embedding-based face verification system designed to match severely distorted query images against clean reference images, generalizing to identities **never seen during training** (a strict open-set protocol). By leveraging proxy-task classification training followed by an $L_2$-normalized 2048-dimensional cosine-similarity embedding space, the model achieves near-perfect open-set verification accuracy — substantially outperforming three off-the-shelf pretrained face embedding baselines evaluated under the identical protocol.
 
-This project implements a highly accurate facial recognition and verification system designed to match distorted or augmented query images against clean reference images. By leveraging a fine-tuned ResNet-50 architecture and Cosine Similarity on 2048-dimensional embeddings, the model achieves near-perfect verification accuracy.
+### Key Features
 
-### **Key Features**
+- **Two-Phase Proxy-Task Strategy:** Phase 1 trains a ResNet-50 as a closed-set 877-way identity classifier (with aggressive layer freezing) purely as an intermediate objective; Phase 2 discards the classification head and repurposes the backbone as an open-set embedding extractor.
+- **Open-Set Evaluation:** Training and validation identities are strictly disjoint ($ID_{train} \cap ID_{val} = \emptyset$, verified — zero identity overlap, zero duplicate or near-duplicate images across splits).
+- **Distortion Robustness:** Evaluated across seven distortion categories (blur, fog, low-light, noise, rain, resizing, sunlight overexposure), matching distorted queries against clean reference embeddings.
+- **Benchmarked Against Real Baselines:** Compared under an identical protocol against an ImageNet-pretrained ResNet-50 (no fine-tuning), InceptionResnetV1 (VGGFace2), and ArcFace (buffalo_l, InsightFace project) — not just an internal ablation.
+- **Cosine Similarity Matching:** Multi-template gallery-query matching in an $L_2$-normalized embedding space, bypassing softmax classification entirely at inference time.
 
-**Transfer Learning Strategy:** Utilizes a pre-trained ResNet-50, freezing early layers and fine-tuning only the deep semantic layers (layer4 and fc) for optimal feature extraction.
+---
 
-**Distortion Robustness:** Evaluates model performance by specifically querying distorted/augmented faces against clean reference embeddings.
+## Model Architecture
 
-**Cosine Similarity Matching:** Employs an $L_2$-normalized embedding space to match query identities, bypassing standard softmax classification for final verification.
-
-**Exceptional Performance:** Achieved an outstanding Validation F1-Score of 0.9989 across a highly diverse set of identities.
-
-### **Model Architecture**
-The system operates in two phases:Training (Classification) and Inference (Embedding Verification).
-
-**Technical Specifications**
-
-**Backbone:** ResNet-50 (Pretrained on ImageNet).
-
-**Training Head:** Fully connected layer adapted for 877 distinct classes.
-
-**Embedding Extractor:** Strips the final classification layer to output a 2048-dimensional feature vector.
-
-**Normalization:** Embeddings are $L_2$-normalized (p=2, dim=1) to project features onto a unit hypersphere, optimizing them for cosine similarity calculations.
+The system operates in two phases: **Phase 1 (Closed-Set Classification)** and **Phase 2 (Open-Set Embedding Verification)**.
 
 <p align="center">
-  <img src="architecture diagram face recognition.png" width="600" title="Face_Recognition_Model Architecture">
+  <img src="architecture_diagram_face_recognition.png" width="600" title="Face_Recognition_Model Architecture">
 </p>
 
-### **Dataset & Preprocessing**
+### Technical Specifications
 
-The dataset is structured into distinct person folders, with a specific focus on handling image distortions.
+| Component | Detail |
+| :--- | :--- |
+| **Backbone** | ResNet-50 (ImageNet-pretrained, `torchvision.models.resnet50(pretrained=True)`) |
+| **Freezing Strategy** | Layers 1–3, initial conv, and batch norm frozen; only Layer 4 + FC trainable |
+| **Trainable / Total Params (Phase 1)** | 16.76M / 25.31M |
+| **Embedding-Extractor Params (Phase 2, inference)** | 23.51M (FC head removed after Global Average Pooling) |
+| **Training Head** | Fully connected layer over 877 identity classes |
+| **Embedding Dimension** | 2048-d, $L_2$-normalized ($p=2$, $\dim=1$) onto the unit hypersphere |
+| **Matching Rule** | Multi-template cosine similarity, $S_i(q) = \max_j S(q, r_{i,j})$, forced top-1 (argmax) — **no rejection threshold is implemented in this inference pipeline** |
 
-Total Identities (Train): 877 unique classes.
+---
 
-Data Split Structure: Zero identity overlap between the training and validation sets (Overlap: set()).
+## Dataset & Preprocessing
 
-Image Categories: * Clean Images: Used to generate ground-truth "Reference Embeddings".
+Dataset: **FACECOM** (Face Attributes in Challenging Environments), structured by identity into person folders with a nested `distortion/` subfolder per identity.
 
-Distorted Images: Stored in subfolders and used exclusively as "Query Images" during evaluation.
+| Split | Identities | Clean Reference Images | Distorted Query Images |
+| :--- | :---: | :---: | :---: |
+| Train | 877 | 1,926 | 13,482 |
+| Validation | 250 | 422 | 2,954 |
+| **Total** | **1,127** | **2,348** | **16,436** |
 
-Augmentations (Training): Resize (224x224), Random Horizontal Flip, Random Rotation (10°), ImageNet Normalization.
+**Total dataset size: 18,784 images.** Identity overlap between train/validation splits: **verified zero** (via MD5 hash and embedding-similarity checks — no exact duplicates, no near-duplicate images across the split boundary).
 
-**Training Configuration & Performance**
+Distorted queries span **seven categories**: blur, fog, low-light, noise, rain, resizing, and sunlight-induced overexposure — present in both splits (1,926 train / 422 validation images per category).
 
-The model was trained using Label Smoothing to prevent overconfidence and an adaptive learning rate scheduler.
+**Augmentations (training only):** Resize(224×224), RandomHorizontalFlip, RandomRotation(10°), ImageNet normalization. `ColorJitter` is deliberately **not** used, to preserve consistent appearance between clean templates and distorted queries for reliable cosine-similarity matching.
 
-### **Training Hyperparameters**
+---
+
+## Training Configuration
 
 | Parameter | Value |
 | :--- | :--- |
 | **Optimizer** | AdamW (`lr = 1e-4`) |
-| **Loss Function** | CrossEntropyLoss with Label Smoothing (0.1) |
+| **Loss Function** | CrossEntropyLoss with Label Smoothing ($\epsilon = 0.1$) |
 | **Scheduler** | StepLR (`step_size = 5`, `gamma = 0.1`) |
 | **Batch Size** | 32 |
 | **Epochs** | 10 |
 
-### **Epoch Progression (Classification Loss)**
+### Epoch Progression (Phase 1 Classification Loss)
 
 | Epoch | Train Loss | Train Accuracy |
 | :---: | :---: | :---: |
@@ -68,41 +72,98 @@ The model was trained using Label Smoothing to prevent overconfidence and an ada
 | 5 | 1.1948 | 0.9957 |
 | 10 | 1.1041 | 0.9999 |
 
-### **Final Verification Metrics**
+---
 
-Instead of evaluating the raw classification output, the final evaluation tests the model's true verification power: extracting the embedding of a distorted image and matching it to the closest clean reference embedding via Cosine Similarity.
+## Results: Benchmark Comparison
 
-| Metric | Training Set (Queries) | Validation Set (Queries) |
+The final evaluation tests true **open-set verification power** — extracting the embedding of a distorted query and matching it to the closest clean reference embedding via cosine similarity — not raw classification accuracy. This model is benchmarked against three pretrained alternatives under an identical gallery-query protocol on the same validation split.
+
+### Model Comparison (Validation, Open-Set)
+
+| Model | Inference Params | Accuracy | Precision | Recall | F1-Score | AUC | EER |
+| :--- | :---: | :---: | :---: | :---: | :---: | :---: | :---: |
+| ImageNet Baseline (no fine-tuning) | 23.51M | 70.58% | 85.55% | 72.98% | 75.53% | 0.8422 | 0.2468 |
+| InceptionResnetV1 (VGGFace2) | 27.91M | 79.05% | 89.52% | 78.45% | 81.70% | 0.9410 | 0.1228 |
+| ArcFace (buffalo_l) | 43.59M | 79.96% | 91.07% | 79.55% | 83.10% | 0.9594 | 0.0944 |
+| **This Model (Proposed)** | **23.51M** | **99.90%** | **99.89%** | **99.91%** | **99.89%** | **1.0000** | **0.0027** |
+
+Notably, this model's inference-time footprint (23.51M) is **identical** to the untrained ImageNet baseline and smaller than both pretrained face-specific alternatives — the performance gap comes entirely from the proxy-task training strategy, not additional model capacity.
+
+### Training vs. Validation (This Model)
+
+| Metric | Training Set | Validation Set |
 | :--- | :---: | :---: |
 | **Accuracy** | 1.0000 | 0.9990 |
 | **Precision** | 1.0000 | 0.9989 |
 | **Recall** | 1.0000 | 0.9991 |
 | **F1-Score** | 1.0000 | 0.9989 |
 
-**Installation & Usage**
+### Accuracy by Distortion Type (Validation, n=422 per category)
 
-Clone the Repository:
+| Distortion | ImageNet Baseline | InceptionResnetV1 | ArcFace | This Model |
+| :--- | :---: | :---: | :---: | :---: |
+| Rainy | 25.12% | 78.67% | 86.73% | 100.00% |
+| Noisy | 25.83% | 84.12% | 76.30% | 100.00% |
+| **Sunny** | 56.16% | **1.42%** | **2.84%** | 99.29% |
+| Foggy | 91.47% | 91.94% | 95.02% | 100.00% |
+| Low-light | 95.97% | 97.39% | 99.76% | 100.00% |
+| Blurred | 99.53% | 99.76% | 99.05% | 100.00% |
+| Resized | 100.00% | 100.00% | 100.00% | 100.00% |
 
-Bash
+**Notable finding:** under the "sunny" (overexposure) distortion, both pretrained face-specific models collapse to near-chance accuracy — likely because this distortion severely occludes the internal facial landmarks (eyes, nose, mouth) that VGGFace2/ArcFace-style training data typically exposes. This model retains 99.29% accuracy under the same condition, consistent with Phase 1 training including pre-distorted samples across all seven categories.
 
-git clone https://github.com/SoumabrataBhowmik/Face_Recognition_Model.git
+---
 
-cd Face_Recognition_Model
+## Open-Set Rejection: Threshold Analysis (Not Yet Deployed)
 
-Dependencies:
+> **Important:** the deployed inference pipeline in this repository performs a **forced nearest-neighbor match** — every query is assigned to the highest-similarity gallery identity, regardless of how low that similarity is. **No rejection threshold is implemented in the current codebase.**
 
-Ensure you have the required libraries installed:
+A **post-hoc analysis** was run on the model's existing top-1 similarity scores to evaluate whether a threshold-based rejection rule (`accept only if max similarity ≥ τ, else label "unknown"`) would be viable if implemented:
 
-Bash
+- Accuracy on accepted queries remains **≥0.999** across nearly the full threshold range tested.
+- Rejection rate stays **below 5%** for τ ≤ 0.90, rising sharply only as τ → 1.0.
+- The EER-optimal threshold (τ ≈ 0.797) falls within this low-rejection region — a plausible operating point *if* this mechanism were integrated into deployment.
 
+**This is analysis, not a shipped feature.** Integrating actual threshold-based rejection into the inference pipeline, and validating it against a dedicated set of imposter identities entirely absent from the gallery, remains future work.
+
+---
+
+## Installation & Usage
+
+### Dependencies
+
+Core dependencies:
+```bash
 pip install torch torchvision pillow scikit-learn numpy
+```
 
-Run the Implementation:
+For reproducing the baseline comparison (InceptionResnetV1 and ArcFace):
+```bash
+pip install facenet-pytorch --break-system-packages -q
+pip install insightface onnxruntime opencv-python-headless --break-system-packages -q
+```
 
-Open the provided Jupyter Notebook (face_recognition.ipynb file) to view the data loading, training loop, and evaluation logic.
+> Note: installing the above may pull in NumPy 2.x / Pillow 11.x, which can break an existing PyTorch/torchvision install compiled against older ABI versions. If you hit `ImportError` or `"Numpy is not available"` errors, pin back with:
+> ```bash
+> pip install "numpy<2" "Pillow<11" --break-system-packages -q
+> ```
+> and restart your kernel/session.
 
-The trained weights are saved in face_recognition_model.pt. To run inference, load this state dictionary into a ResNet-50 model.
+### Running the Implementation
 
+Open `face_recognition.ipynb` to view the data loading, Phase 1/Phase 2 training loop, and evaluation logic. Trained weights are saved as `face_recognition_model.pt`. To run inference, load this state dictionary into a ResNet-50 model with the final FC layer set to 877 output classes, then strip the FC layer post-load to use the model as an embedding extractor (see Phase 2 in the notebook).
+
+---
+
+## Limitations
+
+- **Alignment dependency:** performance depends on accurate face localization/cropping prior to embedding extraction; severe occlusions that break upstream face detection will break the pipeline.
+- **No rejection mechanism deployed:** see the Threshold Analysis section above.
+- **Single-benchmark evaluation:** all results are obtained on FACECOM; generalization to other face recognition benchmarks or real-world surveillance imagery has not been empirically tested.
+
+## Citation
+
+If you use this work, please cite the accompanying paper (details to be added upon publication).
 
 ## System Architecture
 
