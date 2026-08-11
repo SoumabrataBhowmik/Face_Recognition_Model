@@ -161,10 +161,6 @@ Open `face_recognition.ipynb` to view the data loading, Phase 1/Phase 2 training
 - **No rejection mechanism deployed:** see the Threshold Analysis section above.
 - **Single-benchmark evaluation:** all results are obtained on FACECOM; generalization to other face recognition benchmarks or real-world surveillance imagery has not been empirically tested.
 
-## Citation
-
-If you use this work, please cite the accompanying paper (details to be added upon publication).
-
 ## System Architecture
 
 The face recognition system is divided into two primary phases: a model training pipeline utilizing a fine-tuned ResNet-50, and an inference pipeline that extracts L2-normalized 2048-dimensional feature embeddings for cosine similarity matching.
