@@ -1,5 +1,5 @@
 # Robust Open-Set Face Recognition Under Severe Visual Distortions
-## Facial Verification via ResNet-50 Proxy-Task Training
+## Face Recognition via ResNet-50 Proxy-Task Training
 
 This project implements a two-phase, embedding-based face verification system designed to match severely distorted query images against clean reference images, generalizing to identities **never seen during training** (a strict open-set protocol). By leveraging proxy-task classification training followed by an $L_2$-normalized 2048-dimensional cosine-similarity embedding space, the model achieves near-perfect open-set verification accuracy — substantially outperforming three off-the-shelf pretrained face embedding baselines evaluated under the identical protocol.
 
